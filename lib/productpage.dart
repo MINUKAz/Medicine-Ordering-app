@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'aboutuspage.dart';
 import 'contactus.dart';
 import 'homepage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloudinary/cloudinary.dart';
+import 'cartpage.dart';
 
 class ProductPage extends StatefulWidget {
   const ProductPage({Key? key}) : super(key: key);
@@ -11,7 +15,88 @@ class ProductPage extends StatefulWidget {
 }
 
 class _ProductPageState extends State<ProductPage> {
+
+  final Cloudinary cloudinary = Cloudinary.signedConfig(
+    apiKey: '628515619397789',
+    apiSecret: 'hrQRvjoMsIq_Jgxqo6PGJOwnCJA',
+    cloudName: 'dwez9bgmh',
+  );
+
   int _selectedIndex = 0;
+
+  Future<void> _addMultipleProducts() async {
+    final products = [
+      {
+        'name': 'Atorvastatin 20mg',
+        'price': 15.99,
+        'category': 'Heart',
+        'description': 'Cholesterol lowering tablets',
+        'imageUrl': 'assets/images/atorvastatin-20-mg-tablets.jpg',
+        'isPopular': true,
+        'stock': 45,
+      },
+      {
+        'name': 'Albuterol Inhaler',
+        'price': 18.50,
+        'category': 'Lung',
+        'description': 'Bronchospasm treatment',
+        'imageUrl': 'assets/images/images.jpg',
+        'isPopular': false,
+        'stock': 25,
+      },
+      {
+        'name': 'Artificial Tears',
+        'price': 6.99,
+        'category': 'Eye',
+        'description': 'Lubricating eye drops',
+        'imageUrl': 'assets/images/images (1).jpg',
+        'isPopular': true,
+        'stock': 80,
+      },
+      {
+        'name': 'Ibuprofen 400mg',
+        'price': 5.49,
+        'category': 'Pain',
+        'description': 'Anti-inflammatory tablets',
+        'imageUrl': 'assets/images/ibuprofen-400-mg-bp-tablets.jpg',
+        'isPopular': true,
+        'stock': 120,
+      },
+
+    ];
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (final product in products) {
+      final docRef = FirebaseFirestore.instance.collection('products').doc();
+      batch.set(docRef, product);
+    }
+
+    await batch.commit();
+  }
+
+  void _addSampleProduct() async {
+    final product = {
+      'name': 'Paracetamol',
+      'price': 3.99,
+      'category': 'Pain',
+      'description': 'Pain relief tablets',
+      'imageUrl': 'https://example.com/paracetamol.jpg',
+      'isPopular': true,
+      'stock': 50,
+    };
+
+    try {
+      await FirebaseFirestore.instance.collection('products').add(product);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sample product added successfully!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add product: $e')),
+      );
+    }
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -19,19 +104,16 @@ class _ProductPageState extends State<ProductPage> {
     });
 
     if (index == 0) {
-      // Navigate to Home Page
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const HomePage()),
       );
     } else if (index == 1) {
-      // Navigate to About Us Page
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const AboutUsScreen()),
       );
     } else if (index == 2) {
-      // Navigate to Contact Us Page
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const ContactUsScreen()),
@@ -39,13 +121,12 @@ class _ProductPageState extends State<ProductPage> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[50],
         appBar: AppBar(
-        automaticallyImplyLeading: false, // This line removes the back button
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
         elevation: 1,
         title: Row(
@@ -179,37 +260,98 @@ class _ProductPageState extends State<ProductPage> {
                 ],
               ),
               SizedBox(height: 12),
-              Expanded(
-                child: GridView.builder(
-                  physics: BouncingScrollPhysics(),
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.8,
+                Expanded(
+                  child: StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('products')
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Text('Error: ${snapshot.error}');
+                      }
+                      if (!snapshot.hasData) {
+                        return Center(
+                          child: Text('No products available'),
+                        );
+                      }
+
+                      final products = snapshot.data!.docs;
+
+                      return GridView.builder(
+                        physics: BouncingScrollPhysics(),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 0.75,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemCount: products.length,
+                        itemBuilder: (context, index) {
+                          final product = products[index].data() as Map<String, dynamic>;
+                          return ProductCard(
+                            productId: products[index].id,
+                            name: product['name'],
+                            price: "\$${product['price']}",
+                            category: product['category'],
+                            imageUrl: product['imageUrl'],
+                          );
+                        },
+                      );
+                    },
                   ),
-                  itemCount: 6,
-                  itemBuilder: (context, index) {
-                    return ProductCard(
-                      name: "Product ${index + 1}",
-                      price: "\$${(index + 1) * 5}.99",
-                      isFavorite: index % 2 == 0,
-                    );
-                  },
                 ),
-              ),
             ],
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Cart opened')),
-          );
-        },
-        backgroundColor: Colors.blue,
-        child: Icon(Icons.shopping_cart, color: Colors.white),
+      
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            onPressed: _addMultipleProducts, 
+            mini: true,
+            heroTag: 'adminBtn',
+            child: Icon(Icons.admin_panel_settings),
+          ),
+          SizedBox(height: 16),
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(FirebaseAuth.instance.currentUser?.uid)
+                .collection('cart')
+                .snapshots(),
+            builder: (context, snapshot) {
+              int count = snapshot.data?.docs.length ?? 0;
+              return FloatingActionButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => CartPage()), // Navigate to CartPage
+                  );
+                },
+                backgroundColor: Colors.blue,
+                child: Stack(
+                  children: [
+                    const Icon(Icons.shopping_cart, color: Colors.white),
+                    if (count > 0)
+                      Positioned(
+                        right: 0,
+                        child: CircleAvatar(
+                          radius: 10,
+                          backgroundColor: Colors.red,
+                          child: Text(
+                            '$count',
+                            style: const TextStyle(fontSize: 12, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ),
         bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
@@ -288,18 +430,24 @@ class CategoryButton extends StatelessWidget {
 }
 
 class ProductCard extends StatelessWidget {
+  final String productId;
   final String name;
   final String price;
-  final bool isFavorite;
+  final String category;
+  final String imageUrl;
 
   const ProductCard({
+    required this.productId,
     required this.name,
     required this.price,
-    this.isFavorite = false,
+    required this.category,
+    required this.imageUrl,
   });
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -320,10 +468,37 @@ class ProductCard extends StatelessWidget {
                       color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
-                      Icons.medical_services,
-                      color: Colors.blue,
-                      size: 40,
+                    // Replace this child with the new code
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: imageUrl.startsWith('assets/')
+                          ? Image.asset(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                print('Error loading asset image: $error');
+                                return _buildErrorPlaceholder();
+                              },
+                            )
+                          : Image.network(
+                              imageUrl,
+                              fit: BoxFit.cover,
+                              loadingBuilder: (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Center(
+                                  child: CircularProgressIndicator(
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                print('Error loading network image: $error');
+                                return _buildErrorPlaceholder();
+                              },
+                            ),
                     ),
                   ),
                 ),
@@ -337,7 +512,7 @@ class ProductCard extends StatelessWidget {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  "Medicine",
+                  category,
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
@@ -354,47 +529,193 @@ class ProductCard extends StatelessWidget {
                         color: Colors.blue,
                       ),
                     ),
-                    InkWell(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Added $name to cart')),
+                    // Cart Button with Quantity
+                    StreamBuilder<DocumentSnapshot>(
+                      stream: user != null 
+                          ? FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user.uid)
+                              .collection('cart')
+                              .doc(productId)
+                              .snapshots()
+                          : null,
+                      builder: (context, snapshot) {
+                        int quantity = 0;
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          quantity = (snapshot.data!.data() 
+                              as Map<String, dynamic>)['quantity'] ?? 0;
+                        }
+
+                        return Row(
+                          children: [
+                            if (quantity > 0) ...[
+                              InkWell(
+                                onTap: () => _updateCart(context, false),
+                                child: Container(
+                                  padding: EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Icon(
+                                    Icons.remove,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Text('$quantity'),
+                              SizedBox(width: 8),
+                            ],
+                            InkWell(
+                              onTap: () => _updateCart(context, true),
+                              child: Container(
+                                padding: EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Icon(
+                                  Icons.add,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ],
                         );
                       },
-                      child: Container(
-                        padding: EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Icon(
-                          Icons.add,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                      ),
                     ),
                   ],
                 ),
               ],
             ),
           ),
+          // Favorite Button
           Positioned(
             top: 8,
             right: 8,
-            child: InkWell(
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(isFavorite ? 'Removed from favorites' : 'Added to favorites')),
+            child: StreamBuilder<DocumentSnapshot>(
+              stream: user != null 
+                  ? FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .collection('favorites')
+                      .doc(productId)
+                      .snapshots()
+                  : null,
+              builder: (context, snapshot) {
+                bool isFavorite = snapshot.hasData && snapshot.data!.exists;
+                
+                return InkWell(
+                  onTap: () => _toggleFavorite(context),
+                  child: Icon(
+                    isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: isFavorite ? Colors.red : Colors.grey,
+                  ),
                 );
               },
-              child: Icon(
-                isFavorite ? Icons.favorite : Icons.favorite_border,
-                color: isFavorite ? Colors.red : Colors.grey,
-              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+Widget _buildErrorPlaceholder() {
+  return Container(
+    color: Colors.blue[50],
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.medical_services, color: Colors.blue, size: 32),
+        SizedBox(height: 4),
+        Text(
+          'No Image',
+          style: TextStyle(
+            color: Colors.blue,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<void> _updateCart(BuildContext context, bool increment) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to use cart')),
+      );
+      return;
+    }
+
+    try {
+      final cartRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('cart')
+          .doc(productId);
+
+      if (increment) {
+        await cartRef.set({
+          'productId': productId,
+          'quantity': FieldValue.increment(1),
+          'name': name,
+          'price': price,
+          'imageUrl': imageUrl,
+        }, SetOptions(merge: true));
+      } else {
+        final doc = await cartRef.get();
+        final currentQuantity = (doc.data()?['quantity'] ?? 0) as int;
+        
+        if (currentQuantity <= 1) {
+          await cartRef.delete();
+        } else {
+          await cartRef.update({'quantity': FieldValue.increment(-1)});
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating cart: $e')),
+      );
+    }
+  }
+
+  Future<void> _toggleFavorite(BuildContext context) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to favorite items')),
+      );
+      return;
+    }
+
+    try {
+      final favoriteRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('favorites')
+          .doc(productId);
+
+      final doc = await favoriteRef.get();
+      if (doc.exists) {
+        await favoriteRef.delete();
+      } else {
+        await favoriteRef.set({
+          'productId': productId,
+          'name': name,
+          'price': price,
+          'imageUrl': imageUrl,
+          'addedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating favorites: $e')),
+      );
+    }
   }
 }

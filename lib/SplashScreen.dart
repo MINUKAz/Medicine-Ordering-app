@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'homepage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'LoginPage.dart';
+import 'HomePage.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -25,20 +27,27 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controller,
-      curve: Interval(0.0, 0.5, curve: Curves.easeIn),
-      reverseCurve: Interval(0.5, 1.0, curve: Curves.easeOut),
+      curve: Curves.easeIn,
     ));
 
     _controller.forward();
 
-    // Start fade out after 2 seconds
-    Future.delayed(const Duration(seconds: 4), () {
-      _controller.reverse().then((_) {
+    // Navigate to the appropriate page after the splash screen
+    Future.delayed(const Duration(seconds: 5), () {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // User is logged in, navigate to HomePage
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const HomePage()),
         );
-      });
+      } else {
+        // User is not logged in, navigate to LoginPage
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+        );
+      }
     });
   }
 
@@ -59,11 +68,19 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Image.asset(
-                'assets/logo.png',
+                'assets/Logo.png',
                 width: 200,
                 height: 200,
               ),
               const SizedBox(height: 24),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 180.0),
+                child: LinearProgressIndicator(
+                  minHeight: 6.0, // Adjust the height of the loading bar
+                  backgroundColor: Colors.grey,
+                  color: Colors.blue, // Customize the color of the loading bar
+                ),
+              ),
             ],
           ),
         ),

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'aboutuspage.dart';
 import 'contactus.dart';
 import 'profile.dart';
 import 'prescriptionuploadpage.dart';
 import 'productpage.dart';
 import 'Deliverymap.dart';
+import 'dart:convert';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -74,13 +77,30 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Anjali Sharma',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      // In HomePage's build method
+                     FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(FirebaseAuth.instance.currentUser?.uid)
+                          .get(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Text('Loading...', style: TextStyle(fontSize: 16));
+                        }
+                        if (snapshot.hasError) {
+                          return const Text('Error loading user data', style: TextStyle(fontSize: 16, color: Colors.red));
+                        }
+                        if (!snapshot.hasData || snapshot.data?.data() == null) {
+                          return const Text('User data not found', style: TextStyle(fontSize: 16, color: Colors.grey));
+                        }
+
+                        final userData = snapshot.data!.data() as Map<String, dynamic>;
+                        return Text(
+                          userData['username'] ?? 'User',
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        );
+                      },
+                    ),
                     ],
                   ),
                   GestureDetector(
@@ -98,11 +118,50 @@ class _HomePageState extends State<HomePage> {
                           width: 2,
                         ),
                       ),
-                      child: const CircleAvatar(
-                        radius: 24,
-                        backgroundImage: NetworkImage(
-                          'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg',
-                        ),
+                      child: StreamBuilder<DocumentSnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(FirebaseAuth.instance.currentUser?.uid)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError || !snapshot.hasData) {
+                            return const CircleAvatar(
+                              radius: 24,
+                              backgroundColor: Colors.grey,
+                              child: Icon(Icons.person, color: Colors.white),
+                            );
+                          }
+
+                          final userData = snapshot.data!.data() as Map<String, dynamic>?;
+                          if (userData == null) {
+                            return const CircleAvatar(
+                              radius: 24,
+                              backgroundColor: Colors.grey,
+                              child: Icon(Icons.person, color: Colors.white),
+                            );
+                          }
+
+                          // Try to load image in order: base64 -> cloudinary URL -> default
+                          if (userData['profileImageBase64'] != null) {
+                            return CircleAvatar(
+                              radius: 24,
+                              backgroundImage: MemoryImage(
+                                base64Decode(userData['profileImageBase64']),
+                              ),
+                            );
+                          } else if (userData['profilePicture'] != null) {
+                            return CircleAvatar(
+                              radius: 24,
+                              backgroundImage: NetworkImage(userData['profilePicture']),
+                            );
+                          }
+
+                          return const CircleAvatar(
+                            radius: 24,
+                            backgroundColor: Colors.grey,
+                            child: Icon(Icons.person, color: Colors.white),
+                          );
+                        },
                       ),
                     ),
                   ),

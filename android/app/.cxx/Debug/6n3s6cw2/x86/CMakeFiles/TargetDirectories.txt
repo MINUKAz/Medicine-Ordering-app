@@ -1,0 +1,2 @@
+D:/Backup/Desktop/MAD/Medicine Delivery app/android/app/.cxx/Debug/6n3s6cw2/x86/CMakeFiles/edit_cache.dir
+D:/Backup/Desktop/MAD/Medicine Delivery app/android/app/.cxx/Debug/6n3s6cw2/x86/CMakeFiles/rebuild_cache.dir

@@ -9,7 +9,18 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:convert';
 
+
+Future<String> _encodeImageToBase64(File image) async {
+  try {
+    final bytes = await image.readAsBytes();
+    return base64Encode(bytes);
+  } catch (e) {
+    print('Error encoding image: $e');
+    throw Exception('Failed to encode image');
+  }
+}
 
 class PrescriptionApp extends StatelessWidget {
   @override
@@ -39,8 +50,6 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   );
   
   // Add missing variable declarations
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ImagePicker _picker = ImagePicker();
   
   File? _selectedImage;
@@ -78,17 +87,15 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
     setState(() => _isUploading = true);
     
     try {
-      // Upload to Cloudinary
+      // First: Encode to Base64
+      final base64Image = await _encodeImageToBase64(_selectedImage!);
+      
+      // Second: Upload to Cloudinary
       final imageUrl = await _uploadToCloudinary(_selectedImage!);
       
-      // Save to Firestore
-      await _savePrescriptionData(imageUrl);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Upload successful!')),
-      );
+      // Finally: Save both to Firestore
+      await _savePrescriptionData(imageUrl, base64Image);
     } catch (e) {
-      // Generic exception handling without type casting
       print('Upload error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
@@ -99,8 +106,8 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   }
 
   // In _savePrescriptionData method:
-  Future<void> _savePrescriptionData(String imageUrl) async {
-    final user = _auth.currentUser;
+  Future<void> _savePrescriptionData(String imageUrl, String base64Image) async {
+    final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please log in to upload prescriptions')),
@@ -109,20 +116,35 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
     }
 
     try {
-      await _firestore.collection('prescriptions').add({
+      // Retrieve the username from the authenticated user's displayName
+      final userName = user.displayName ?? 'Anonymous';
+
+      // Prepare the prescription data
+      final prescriptionData = {
         'userId': user.uid,
+        'userName': userName, // Add the username here
         'imageUrl': imageUrl,
+        'imageBase64': base64Image, // Add base64 encoded image
         'status': 'pending',
-        'uploadedAt': FieldValue.serverTimestamp(),
-        'userName': user.displayName ?? 'Anonymous',
         'fileName': 'prescription_${DateTime.now().millisecondsSinceEpoch}',
-      });
+        'uploadedAt': FieldValue.serverTimestamp(),
+      };
+
+      // Save the prescription data to Firestore
+      await FirebaseFirestore.instance
+          .collection('prescriptions')
+          .add(prescriptionData);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Upload successful!')),
+      );
     } catch (e) {
       print('Firestore Error: $e');
-      throw e; // Just rethrow without type casting
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
     }
   }
-
   Future<void> _handleImageUpload() async {
     // Show image source dialog
     await _showImageSourceDialog();
@@ -170,8 +192,15 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
     try {
       final XFile? image = await _picker.pickImage(source: source);
       if (image != null) {
-        setState(() => _selectedImage = File(image.path));
-        await _uploadPrescription(); // Added await
+        if (kIsWeb) {
+          // For web, use the XFile directly
+          setState(() => _selectedImage = null); // Clear any previous image
+          await _uploadPrescriptionWeb(image); // Handle web upload
+        } else {
+          // For mobile, use File
+          setState(() => _selectedImage = File(image.path));
+          await _uploadPrescription(); // Handle mobile upload
+        }
       }
     } on PlatformException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -181,6 +210,40 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
+    }
+  }
+
+  Future<void> _uploadPrescriptionWeb(XFile image) async {
+    setState(() => _isUploading = true);
+
+    try {
+      // Convert XFile to bytes
+      final bytes = await image.readAsBytes();
+      
+      // Convert bytes to base64
+      final base64Image = base64Encode(bytes);
+
+      // Upload to Cloudinary
+      final response = await _cloudinary.upload(
+        fileBytes: bytes,
+        resourceType: CloudinaryResourceType.image,
+        folder: 'prescriptions',
+        fileName: 'prescription_${DateTime.now().millisecondsSinceEpoch}',
+      );
+
+      // Save to Firestore
+      await _savePrescriptionData(response.secureUrl!, base64Image);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Upload successful!')),
+      );
+    } catch (e) {
+      print('Upload error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    } finally {
+      setState(() => _isUploading = false);
     }
   }
 
@@ -348,13 +411,13 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
   }
 
   Widget _buildPrescriptionList() {
-    final user = _auth.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return const Center(child: Text('Please log in to view prescriptions'));
+      return const Center(child: Text('No ongoing prescriptions'));
     }
 
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestore
+      stream: FirebaseFirestore.instance
           .collection('prescriptions')
           .where('userId', isEqualTo: user.uid)
           .orderBy('uploadedAt', descending: true)
@@ -375,14 +438,26 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
         }
 
         return ListView.builder(
-          physics: const BouncingScrollPhysics(),
           itemCount: prescriptions.length,
           itemBuilder: (context, index) {
             final data = prescriptions[index].data() as Map<String, dynamic>;
-            return _buildPrescriptionCard(
-              data['fileName']?.toString().split('/').last ?? 'Prescription',
-              data['status'] ?? 'pending',
-              _getStatusColor(data['status'] ?? 'pending'),
+            final base64Image = data['imageBase64'] ?? '';
+            final fileName = data['fileName'] ?? 'Unknown Prescription';
+            final status = data['status'] ?? 'pending';
+            final statusColor = _getStatusColor(status);
+
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                children: [
+                  if (base64Image.isNotEmpty) _buildPrescriptionImage(base64Image),
+                  ListTile(
+                    title: Text(fileName),
+                    subtitle: Text(status),
+                    trailing: Icon(Icons.circle, color: statusColor),
+                  ),
+                ],
+              ),
             );
           },
         );
@@ -464,6 +539,38 @@ class _PrescriptionScreenState extends State<PrescriptionScreen> {
     );
   }
   
+ Widget _buildPrescriptionImage(String base64Image) {
+    if (base64Image.isEmpty) {
+      return const SizedBox(
+        height: 150,
+        child: Center(child: Text('No image available')),
+      );
+    }
+
+    try {
+      final imageBytes = base64Decode(base64Image);
+      return Image.memory(
+        imageBytes,
+        height: 200,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          print('Error loading image: $error');
+          return const SizedBox(
+            height: 150,
+            child: Center(child: Text('Error loading image')),
+          );
+        },
+      );
+    } catch (e) {
+      print('Error decoding base64: $e');
+      return const SizedBox(
+        height: 150,
+        child: Center(child: Text('Error loading image')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     // Dispose any controllers if you have them

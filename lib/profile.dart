@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:untitled3/loginpage.dart';
 import 'edit_profile.dart';
+import 'dart:convert';
 
 class ProfilePage extends StatelessWidget {
+  const ProfilePage({Key? key}) : super(key: key);
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -22,52 +27,83 @@ class ProfilePage extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              height: 200,
-              decoration: BoxDecoration(
-                color: const Color.fromARGB(255, 70, 156, 255),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.white,
-                      child: CircleAvatar(
-                        radius: 45,
-                        backgroundImage: NetworkImage(
-                          'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg',
-                        ),
+        body: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(FirebaseAuth.instance.currentUser?.uid)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Text('Error: ${snapshot.error}'),
+              );
+            }
+
+            if (!snapshot.hasData || !snapshot.data!.exists) {
+              return const Center(
+                child: Text('No user data found'),
+              );
+            }
+
+            final userData = snapshot.data!.data() as Map<String, dynamic>;
+
+            return SingleChildScrollView(
+              child: Column(
+                children: [
+                  Container(
+                    height: 200,
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(255, 70, 156, 255),
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(30),
+                        bottomRight: Radius.circular(30),
                       ),
                     ),
-                    SizedBox(height: 10),
-                    Text(
-                      "D.P. Anjali Weerathunga",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 50,
+                            backgroundColor: Colors.white,
+                            child: CircleAvatar(
+                              radius: 45,
+                              backgroundImage: userData['profileImageBase64'] != null
+                                  ? MemoryImage(base64Decode(userData['profileImageBase64']))
+                                  : userData['profileImageUrl'] != null
+                                      ? NetworkImage(userData['profileImageUrl']) as ImageProvider
+                                      : const NetworkImage(
+                                          'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y',
+                                        ),
+                              onBackgroundImageError: (e, _) {
+                                print('Error loading profile image: $e');
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            userData['name'] ?? 'No Name',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '${userData['district'] ?? 'No District'}, Sri Lanka',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      "Galle, Sri Lanka",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+                  ),
             Padding(
               padding: EdgeInsets.all(20),
               child: Column(
@@ -93,18 +129,18 @@ class ProfilePage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  _buildInfoCard("Personal Information", [
-                    _buildInfoItem(Icons.person, "NIC No.", "********21"),
-                    _buildInfoItem(Icons.bloodtype, "Blood Type", "B+"),
-                    _buildInfoItem(Icons.phone, "Contact No.", "********67"),
-                  ]),
-                  SizedBox(height: 20),
-                  _buildInfoCard("Address Information", [
-                    _buildInfoItem(Icons.location_on, "Address", "B 21/4 Saman Mawwatha, Galle."),
-                    _buildInfoItem(Icons.map, "Province", "South"),
-                    _buildInfoItem(Icons.place, "District", "Galle"),
-                  ]),
-                  SizedBox(height: 30),
+                    _buildInfoCard("Personal Information", [
+                        _buildInfoItem(Icons.person, "NIC No.", userData['nic'] ?? 'Not provided'),
+                        _buildInfoItem(Icons.bloodtype, "Blood Type", userData['bloodType'] ?? 'Not provided'),
+                        _buildInfoItem(Icons.phone, "Contact No.", userData['phone'] ?? 'Not provided'),
+                      ]),
+                      const SizedBox(height: 20),
+                      _buildInfoCard("Address Information", [
+                        _buildInfoItem(Icons.location_on, "Address", userData['address'] ?? 'Not provided'),
+                        _buildInfoItem(Icons.map, "Province", userData['province'] ?? 'Not provided'),
+                        _buildInfoItem(Icons.place, "District", userData['district'] ?? 'Not provided'),
+                      ]),
+                      const SizedBox(height: 30),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -135,10 +171,12 @@ class ProfilePage extends StatelessWidget {
                 ],
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
+          },
+        ),
+      );  
   }
 
   Widget _buildInfoCard(String title, List<Widget> items) {
